@@ -1,12 +1,12 @@
 /**
  * EGDesk User Data Configuration
- * Generated at: 2026-05-15T14:02:22.862Z
+ * Generated at: 2026-05-16T07:38:38.033Z
  *
  * This file contains type-safe definitions for your EGDesk tables.
  */
 
 export const EGDESK_CONFIG = {
-  apiUrl: 'http://localhost:8080',
+  apiUrl: 'http://127.0.0.1:8080',
   apiKey: 'a67ddc0f-7e2b-4997-9a0b-9667a74c89d0',
 } as const;
 
@@ -22,62 +22,86 @@ export interface TableDefinition {
 
 export const TABLES = {
   table1: {
+    name: 'students',
+    displayName: '학생 명단',
+    description: '학생 기본 정보 및 부가 정보',
+    rowCount: 5,
+    columnCount: 12,
+    columns: ['id', 'name', 'parent_name', 'parent_phone', 'birth_date', 'rank', 'memo', 'face_vector', 'profile_image', 'class_id', 'receive_sms_in', 'receive_sms_out']
+  } as TableDefinition,
+  table2: {
+    name: 'students_backup_2',
+    displayName: 'students_backup_2',
+    description: '학생 기본 정보 및 부가 정보',
+    rowCount: 3,
+    columnCount: 11,
+    columns: ['id', 'name', 'parent_name', 'parent_phone', 'birth_date', 'rank', 'memo', 'face_vector', 'profile_image', 'class_id', 'receive_sms']
+  } as TableDefinition,
+  table3: {
+    name: 'attendance_logs',
+    displayName: '출결 기록',
+    description: '학생 출결 기록 및 문자 발송 상태',
+    rowCount: 4,
+    columnCount: 6,
+    columns: ['id', 'student_id', 'timestamp', 'type', 'status', 'sms_status']
+  } as TableDefinition,
+  table4: {
     name: 'tkd_system_settings',
     displayName: '태권도 시스템 설정',
     rowCount: 5,
     columnCount: 3,
     columns: ['id', 'key', 'value']
   } as TableDefinition,
-  table2: {
+  table5: {
     name: 'system_settings',
     displayName: '시스템 설정',
     rowCount: 0,
     columnCount: 3,
     columns: ['id', 'key', 'value']
   } as TableDefinition,
-  table3: {
+  table6: {
     name: 'student_classes',
     displayName: '반 관리',
     rowCount: 4,
     columnCount: 2,
     columns: ['id', 'name']
   } as TableDefinition,
-  table4: {
+  table7: {
     name: 'payment_records',
     displayName: '수납 기록',
     rowCount: 0,
     columnCount: 6,
     columns: ['id', 'student_id', 'amount', 'payment_date', 'depositor_name', 'status']
   } as TableDefinition,
-  table5: {
-    name: 'attendance_logs',
-    displayName: '출결 기록',
+  table8: {
+    name: 'attendance_logs_backup',
+    displayName: 'attendance_logs_backup',
     rowCount: 0,
-    columnCount: 6,
-    columns: ['id', 'student_id', 'timestamp', 'type', 'status', 'sms_status']
+    columnCount: 5,
+    columns: ['id', 'student_id', 'timestamp', 'type', 'status']
   } as TableDefinition,
-  table6: {
-    name: 'students',
-    displayName: '학생 명단',
+  table9: {
+    name: 'students_backup',
+    displayName: 'students_backup',
     rowCount: 3,
     columnCount: 10,
-    columns: ['id', 'name', 'parent_name', 'parent_phone', 'birth_date', 'rank', 'memo', 'face_vector', 'profile_image', 'class_id', 'receive_sms_in', 'receive_sms_out']
+    columns: ['id', 'name', 'parent_name', 'parent_phone', 'birth_date', 'rank', 'memo', 'face_vector', 'profile_image', 'class_id']
   } as TableDefinition,
-  table7: {
+  table10: {
     name: 'classes',
     displayName: '수업 정보',
     rowCount: 0,
     columnCount: 4,
     columns: ['id', 'name', 'start_time', 'end_time']
   } as TableDefinition,
-  table8: {
+  table11: {
     name: 'custom_fields',
     displayName: '사용자 정의 항목',
     rowCount: 0,
     columnCount: 3,
     columns: ['id', 'field_name', 'display_name']
   } as TableDefinition,
-  table9: {
+  table12: {
     name: 'test_like',
     displayName: 'Test Table',
     rowCount: 1,
@@ -98,13 +122,16 @@ export function getTableByName(tableName: string): TableDefinition | undefined {
 
 // Export table names for easy access
 export const TABLE_NAMES = {
-  table1: 'tkd_system_settings',
-  table2: 'system_settings',
-  table3: 'student_classes',
-  table4: 'payment_records',
-  table5: 'attendance_logs',
-  table6: 'students',
-  table7: 'classes',
-  table8: 'custom_fields',
-  table9: 'test_like'
+  table1: 'students',
+  table2: 'students_backup_2',
+  table3: 'attendance_logs',
+  table4: 'tkd_system_settings',
+  table5: 'system_settings',
+  table6: 'student_classes',
+  table7: 'payment_records',
+  table8: 'attendance_logs_backup',
+  table9: 'students_backup',
+  table10: 'classes',
+  table11: 'custom_fields',
+  table12: 'test_like'
 } as const;

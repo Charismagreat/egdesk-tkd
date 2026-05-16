@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 
 export default function PWARegister() {
   useEffect(() => {
+    /*
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
         navigator.serviceWorker.register('/sw.js').then(
@@ -15,7 +16,7 @@ export default function PWARegister() {
           }
         );
       });
-    }
+    */
   }, []);
 
   return null;

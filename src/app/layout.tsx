@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import SidebarWrapper from "@/components/SidebarWrapper";
 import PWARegister from "@/components/PWARegister";
+import MobileRedirect from "@/components/MobileRedirect";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,7 +47,28 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                  let didUnregister = false;
+                  for(let registration of registrations) {
+                    registration.unregister();
+                    didUnregister = true;
+                  }
+                  if (didUnregister) {
+                    window.location.reload();
+                  }
+                });
+              }
+            `,
+          }}
+        />
+      </head>
       <body className="min-h-full" suppressHydrationWarning style={{ margin: 0, padding: 0 }}>
+        <MobileRedirect />
         <PWARegister />
         <SidebarWrapper>
           {children}

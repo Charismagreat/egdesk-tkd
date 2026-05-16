@@ -38,7 +38,7 @@ export default function StudentRegisterPage() {
     const loadModels = async () => {
       try {
         const faceapi = await import('@vladmandic/face-api');
-        const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model/';
+        const MODEL_URL = '/models/';
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
           faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),

@@ -70,29 +70,16 @@ export default function AttendanceMonitorPage() {
     // 2. Fetch Data from DB
     const fetchData = async () => {
       try {
-        const studentData = await queryTable('students');
-        if (studentData && studentData.rows) {
-          setStudents(studentData.rows);
-        }
-
-        // 1. Get Today's Date String (Local)
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const todayStr = `${year}-${month}-${day}`;
+        const res = await fetch('/api/attendance_init');
+        if (!res.ok) throw new Error('API request failed');
+        const data = await res.json();
         
-        // 2. Fetch today's counts and logs
-        const [countData, logData] = await Promise.all([
-          executeSQL(`SELECT COUNT(*) as count FROM attendance_logs WHERE timestamp LIKE '${todayStr}%' AND type = 'IN'`),
-          executeSQL(`SELECT student_id, timestamp, type FROM attendance_logs WHERE timestamp LIKE '${todayStr}%' ORDER BY timestamp DESC LIMIT 5`)
-        ]);
+        if (data.students) setStudents(data.students);
+        setTodayCount(data.count || 0);
 
-        setTodayCount(countData.rows?.[0]?.count || 0);
-        
-        if (logData && logData.rows) {
-          const studentMap = new Map(studentData.rows.map((s: any) => [s.id, s.name]));
-          const formattedLogs = logData.rows.map((l: any) => ({
+        if (data.logs && data.students) {
+          const studentMap = new Map(data.students.map((s: any) => [s.id, s.name]));
+          const formattedLogs = data.logs.map((l: any) => ({
             name: studentMap.get(l.student_id) || `ID: ${l.student_id}`,
             time: new Date(l.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             type: l.type as 'IN' | 'OUT'
@@ -100,17 +87,11 @@ export default function AttendanceMonitorPage() {
           setRecentLogs(formattedLogs);
         }
 
-        // 3. Fetch system settings (Handle table not found error)
-        try {
-          const settingsData = await queryTable('tkd_system_settings');
-          if (settingsData && settingsData.rows) {
-            const checkout = settingsData.rows.find((s: any) => s.key === 'attendance_auto_checkout_minutes');
-            const smsOn = settingsData.rows.find((s: any) => s.key === 'sms_enabled');
-            if (checkout) setAutoCheckoutMinutes(Number(checkout.value));
-            if (smsOn) setSmsEnabled(smsOn.value === 'true' || smsOn.value === 'ON');
-          }
-        } catch (err) {
-          console.warn('tkd_system_settings 테이블을 찾을 수 없어 기본값을 사용합니다.');
+        if (data.settings && data.settings.length > 0) {
+          const checkout = data.settings.find((s: any) => s.key === 'attendance_auto_checkout_minutes');
+          const smsOn = data.settings.find((s: any) => s.key === 'sms_enabled');
+          if (checkout) setAutoCheckoutMinutes(Number(checkout.value));
+          if (smsOn) setSmsEnabled(smsOn.value === 'true' || smsOn.value === 'ON');
         }
       } catch (err) {
         console.error('데이터 로드 실패:', err);
@@ -152,8 +133,13 @@ export default function AttendanceMonitorPage() {
     }
   };
 
+  const [cameraError, setCameraError] = useState('');
+
   const startVideo = async () => {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices) return;
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
+      setCameraError('이 브라우저에서는 카메라를 사용할 수 없습니다. (HTTPS 환경 또는 PC 필요)');
+      return;
+    }
     if (videoRef.current?.srcObject) return; // Already active
 
     try {
@@ -167,9 +153,11 @@ export default function AttendanceMonitorPage() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         console.log('Webcam stream started');
+        setCameraError('');
       }
     } catch (err) {
       console.error('Webcam access error:', err);
+      setCameraError('카메라 접근 권한이 없거나 카메라를 찾을 수 없습니다.');
     }
   };
 
@@ -387,6 +375,16 @@ export default function AttendanceMonitorPage() {
         ref={canvasRef} 
         className="absolute inset-0 w-full h-full pointer-events-none z-10" 
       />
+
+      {cameraError && (
+        <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/80">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <TriangleAlert size={64} className="text-red-500" />
+            <h2 className="text-2xl font-bold text-white">카메라 에러</h2>
+            <p className="text-slate-300 max-w-md">{cameraError}</p>
+          </div>
+        </div>
+      )}
 
       {/* UI Overlay */}
       <div className="absolute inset-0 flex flex-col justify-between p-16 pointer-events-none z-20">

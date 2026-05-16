@@ -7,8 +7,9 @@ import Sidebar from './Sidebar';
 export default function SidebarWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAttendanceMonitor = pathname === '/attendance';
+  const isMobileRoute = pathname.startsWith('/m');
 
-  if (isAttendanceMonitor) {
+  if (isAttendanceMonitor || isMobileRoute) {
     return <>{children}</>;
   }
 
