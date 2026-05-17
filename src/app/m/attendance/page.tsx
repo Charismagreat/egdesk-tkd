@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
-export default async function MobileAttendancePage({ searchParams }: { searchParams: Promise<{ mode?: string, month?: string, year?: string }> }) {
+export default async function MobileAttendancePage({ searchParams }: { searchParams: Promise<{ mode?: string, month?: string, year?: string, date?: string }> }) {
   noStore();
   const sp = await searchParams;
   const mode = sp.mode || 'daily';
@@ -43,7 +43,7 @@ export default async function MobileAttendancePage({ searchParams }: { searchPar
       const month = sp.month || String(localToday.getUTCMonth() + 1).padStart(2, '0');
       queryDatePattern = `${year}-${month}`;
     } else {
-      queryDatePattern = `${localToday.getUTCFullYear()}-${String(localToday.getUTCMonth() + 1).padStart(2, '0')}-${String(localToday.getUTCDate()).padStart(2, '0')}`;
+      queryDatePattern = sp.date || `${localToday.getUTCFullYear()}-${String(localToday.getUTCMonth() + 1).padStart(2, '0')}-${String(localToday.getUTCDate()).padStart(2, '0')}`;
     }
 
     const logsRes = await executeSQL(`

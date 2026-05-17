@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Bell, Smartphone, Palette, HelpCircle, ChevronRight, HardDrive, Users, Trash2, PlusCircle, RefreshCw, Clock, Save } from 'lucide-react';
+import { ArrowLeft, Bell, Smartphone, Palette, HelpCircle, ChevronRight, HardDrive, Users, Trash2, PlusCircle, RefreshCw, Clock, Save, ScanFace, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { queryTable, insertRows, deleteRows } from '@root/egdesk-helpers';
 
@@ -12,6 +12,9 @@ export default function MobileSettingsPage() {
   // Classes State
   const [classes, setClasses] = useState<{id: number, name: string}[]>([]);
   const [newClassName, setNewClassName] = useState('');
+  
+  // Usage Stats State
+  const [usageStats, setUsageStats] = useState({ faceAuthCount: 0, smsCount: 0 });
   
   // Automation Settings State
   const [refreshInterval, setRefreshInterval] = useState(1);
@@ -37,6 +40,13 @@ export default function MobileSettingsPage() {
       
       if (refresh) setRefreshInterval(Number(refresh.value));
       if (checkout) setAutoCheckoutMinutes(Number(checkout.value));
+
+      // Fetch Usage Statistics
+      const usageRes = await fetch('/api/settings/usage');
+      if (usageRes.ok) {
+        const usageData = await usageRes.json();
+        setUsageStats({ faceAuthCount: usageData.faceAuthCount || 0, smsCount: usageData.smsCount || 0 });
+      }
     } catch (err) {
       console.error('데이터 로드 실패:', err);
     }
@@ -138,6 +148,39 @@ export default function MobileSettingsPage() {
               {classes.length === 0 && (
                 <div className="text-center py-6 text-slate-400 text-sm font-medium">등록된 반이 없습니다.</div>
               )}
+            </div>
+          </div>
+        </section>
+
+        {/* Usage Statistics */}
+        <section>
+          <h2 className="text-sm font-bold text-slate-500 mb-3 px-2 uppercase tracking-wider flex items-center gap-2">
+            <ScanFace size={14} /> 서비스 이용 통계
+          </h2>
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5 flex flex-col gap-4">
+            <div className="flex justify-between items-center bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                  <ScanFace size={20} />
+                </div>
+                <div>
+                  <div className="font-bold text-slate-800">얼굴 인식</div>
+                  <div className="text-[10px] text-slate-500">누적 이용 건수</div>
+                </div>
+              </div>
+              <div className="text-xl font-black text-blue-600">{usageStats.faceAuthCount.toLocaleString()}건</div>
+            </div>
+            <div className="flex justify-between items-center bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                  <MessageSquare size={20} />
+                </div>
+                <div>
+                  <div className="font-bold text-slate-800">문자 발송</div>
+                  <div className="text-[10px] text-slate-500">누적 이용 건수</div>
+                </div>
+              </div>
+              <div className="text-xl font-black text-indigo-600">{usageStats.smsCount.toLocaleString()}건</div>
             </div>
           </div>
         </section>

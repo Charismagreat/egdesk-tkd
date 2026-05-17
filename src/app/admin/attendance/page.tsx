@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { RefreshCw, Download, Search } from 'lucide-react';
 import { queryTable, deleteRows, executeSQL } from '@root/egdesk-helpers';
 import { matchChosung } from '@/utils/koreanUtils';
+import { createAttendanceLogsAction, sendAttendanceSMSBatchAction } from '@/app/actions/sms';
 
 interface AttendanceLog {
   id: number;
@@ -20,6 +21,10 @@ interface AttendanceLog {
 export default function AttendanceManagementPage() {
   const [viewMode, setViewMode] = useState<'list' | 'monthly'>('list');
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'not_in' | 'not_out'>('all');
   const [refreshInterval, setRefreshInterval] = useState(1); // minutes
@@ -30,9 +35,40 @@ export default function AttendanceManagementPage() {
   const [students, setStudents] = useState<any[]>([]);
   const [monthlyData, setMonthlyData] = useState<Record<number, Record<number, string[]>>>({}); // studentId -> day -> types[]
   
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<(number | string)[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [sendSmsOnBatch, setSendSmsOnBatch] = useState(true);
+
+  const handleBatchProcess = async (type: 'IN' | 'OUT', targetStudentIds: number[]) => {
+    if (targetStudentIds.length === 0) return;
+    if (!confirm(`${targetStudentIds.length}명의 관원을 일괄 ${type === 'IN' ? '등원' : '하원'} 처리하시겠습니까?${sendSmsOnBatch ? '\n문자 발송이 설정된 관원은 자동으로 문자가 발송됩니다.' : ''}`)) return;
+
+    setIsProcessing(true);
+    try {
+      const timestamp = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' });
+      const requests = targetStudentIds.map(id => ({ studentId: id, type }));
+      
+      const saveRes = await createAttendanceLogsAction(requests, timestamp);
+      if (saveRes && saveRes.success) {
+        fetchLogs();
+      }
+
+      if (sendSmsOnBatch) {
+        sendAttendanceSMSBatchAction(requests, timestamp).then(() => {
+          fetchLogs();
+        });
+      }
+
+      alert(`일괄 ${type === 'IN' ? '등원' : '하원'} 처리가 시작되었습니다.`);
+    } catch (err) {
+      console.error(err);
+      alert('처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -42,7 +78,7 @@ export default function AttendanceManagementPage() {
       fetchMonthlyLogs();
     }
     fetchRefreshSettings();
-  }, [viewMode, selectedMonth]);
+  }, [viewMode, selectedMonth, selectedDate]);
 
   const fetchRefreshSettings = async () => {
     try {
@@ -84,11 +120,14 @@ export default function AttendanceManagementPage() {
       const studentMap = new Map((studentsRes.rows || []).map((s: any) => [s.id, s]));
       setStudents(studentsRes.rows || []);
 
-      const todayStr = new Date().toLocaleDateString('en-CA');
+      const targetDate = selectedDate || (() => {
+        const now = new Date();
+        return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+      })();
 
       const logsRes = await executeSQL(`
         SELECT * FROM attendance_logs 
-        WHERE timestamp LIKE '${todayStr}%' 
+        WHERE timestamp LIKE '${targetDate}%' 
         ORDER BY id DESC
       `);
 
@@ -184,28 +223,78 @@ export default function AttendanceManagementPage() {
     XLSX.writeFile(workbook, `출결현황_${selectedMonth}.xlsx`);
   };
 
+  const [year, month] = selectedMonth.split('-').map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  let displayData = logs;
+  if (filterMode === 'not_in') {
+    const checkInIds = new Set(logs.filter(l => l.timestamp.startsWith(selectedDate) && l.type === 'IN').map(l => l.student_id));
+    displayData = students.filter(s => (s.status === 'ACTIVE' || !s.status) && !checkInIds.has(s.id)).map(s => ({
+      id: `fake-${s.id}`,
+      student_id: s.id,
+      timestamp: selectedDate,
+      type: 'NOT_IN',
+      status: '결석',
+      student_name: s.name,
+      parent_name: s.parent_name || '',
+      parent_phone: s.parent_phone || '',
+      class_name: classMap[s.class_id] || ''
+    })) as any;
+  } else if (filterMode === 'not_out') {
+    const checkInIds = new Set(logs.filter(l => l.timestamp.startsWith(selectedDate) && l.type === 'IN').map(l => l.student_id));
+    const checkOutIds = new Set(logs.filter(l => l.timestamp.startsWith(selectedDate) && l.type === 'OUT').map(l => l.student_id));
+    displayData = students
+      .filter(s => (s.status === 'ACTIVE' || !s.status) && checkInIds.has(s.id) && !checkOutIds.has(s.id))
+      .map(s => {
+        const inLog = logs.find(l => l.student_id === s.id && l.timestamp.startsWith(selectedDate) && l.type === 'IN');
+        return {
+          id: `fake-${s.id}`,
+          student_id: s.id,
+          timestamp: inLog?.timestamp || selectedDate,
+          type: 'NOT_OUT',
+          status: '수련 중',
+          student_name: s.name,
+          parent_name: s.parent_name || '',
+          parent_phone: s.parent_phone || '',
+          class_name: classMap[s.class_id] || ''
+        };
+      }) as any;
+  }
+
+  const filteredLogs = displayData.filter(log => 
+    matchChosung(log.student_name || '', searchTerm) || 
+    matchChosung(log.parent_name || '', searchTerm) || 
+    (log.parent_phone || '').includes(searchTerm) ||
+    matchChosung(log.class_name || '', searchTerm)
+  );
+
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedIds(logs.map((log) => log.id));
+      setSelectedIds(filteredLogs.map((log: any) => log.id));
     } else {
       setSelectedIds([]);
     }
   };
 
-  const handleSelectOne = (id: number) => {
+  const handleSelectOne = (id: number | string) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
   };
 
   const handleDeleteSelected = async () => {
-    if (selectedIds.length === 0) return;
-    if (!confirm(`${selectedIds.length}개의 기록을 삭제하시겠습니까?`)) return;
+    const realSelectedIds = selectedIds.filter(id => typeof id === 'number') as number[];
+    if (realSelectedIds.length === 0) {
+      alert('삭제할 수 있는 실제 기록이 선택되지 않았습니다.');
+      return;
+    }
+    if (!confirm(`${realSelectedIds.length}개의 기록을 삭제하시겠습니까?`)) return;
 
     try {
-      await deleteRows('attendance_logs', { ids: selectedIds });
-      setLogs((prev) => prev.filter((log) => !selectedIds.includes(log.id)));
-      setSelectedIds([]);
+      await deleteRows('attendance_logs', { ids: realSelectedIds });
+      setLogs((prev) => prev.filter((log) => !realSelectedIds.includes(log.id)));
+      setSelectedIds((prev) => prev.filter(id => typeof id === 'string')); // keep fake ids selected if any
       alert('삭제되었습니다.');
     } catch (err) {
       console.error('삭제 실패:', err);
@@ -228,10 +317,6 @@ export default function AttendanceManagementPage() {
   };
 
   if (!mounted) return null;
-
-  const [year, month] = selectedMonth.split('-').map(Number);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -366,6 +451,27 @@ export default function AttendanceManagementPage() {
             </div>
           )}
 
+          {viewMode === 'list' && (
+            <input 
+              type="date" 
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              style={{ 
+                padding: '12px 24px', 
+                backgroundColor: '#FFFFFF', 
+                color: '#475569', 
+                borderRadius: '16px', 
+                border: '1px solid #E2E8F0', 
+                fontWeight: 800, 
+                fontSize: '14px', 
+                cursor: 'pointer', 
+                outline: 'none',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)',
+                marginLeft: '12px'
+              }}
+            />
+          )}
+
           {viewMode === 'monthly' && (
             <input 
               type="month" 
@@ -386,12 +492,12 @@ export default function AttendanceManagementPage() {
             />
           )}
 
-          {viewMode === 'list' && selectedIds.length > 0 && (
+          {viewMode === 'list' && selectedIds.length > 0 && filterMode === 'all' && (
             <button 
               onClick={handleDeleteSelected}
               style={{ padding: '12px 24px', backgroundColor: '#FEE2E2', color: '#EF4444', borderRadius: '16px', border: '1px solid #FECACA', fontWeight: 800, fontSize: '14px', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}
             >
-              선택 삭제 ({selectedIds.length})
+              선택 삭제 ({selectedIds.filter(id => typeof id === 'number').length})
             </button>
           )}
           
@@ -403,7 +509,47 @@ export default function AttendanceManagementPage() {
               <Download size={16} /> 엑셀 다운로드
             </button>
           )}
+
+          {viewMode === 'list' && (filterMode === 'not_in' || filterMode === 'not_out') && selectedIds.length > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '4px', cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                checked={sendSmsOnBatch}
+                onChange={(e) => setSendSmsOnBatch(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#3B82F6' }}
+              />
+              <span style={{ fontSize: '14px', fontWeight: 800, color: '#475569' }}>문자 발송</span>
+            </label>
+          )}
           
+          {viewMode === 'list' && filterMode === 'not_in' && selectedIds.length > 0 && (
+            <button 
+              onClick={() => {
+                const targetStudentIds = filteredLogs.filter((l: any) => selectedIds.includes(l.id)).map((l: any) => l.student_id);
+                handleBatchProcess('IN', targetStudentIds);
+                setSelectedIds([]);
+              }}
+              disabled={isProcessing}
+              style={{ padding: '12px 24px', backgroundColor: '#10B981', color: '#FFFFFF', borderRadius: '16px', border: 'none', fontWeight: 800, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.2)', transition: 'all' }}
+            >
+              {isProcessing ? '처리 중...' : `선택 관원 등원 처리 (${selectedIds.length})`}
+            </button>
+          )}
+
+          {viewMode === 'list' && filterMode === 'not_out' && selectedIds.length > 0 && (
+            <button 
+              onClick={() => {
+                const targetStudentIds = filteredLogs.filter((l: any) => selectedIds.includes(l.id)).map((l: any) => l.student_id);
+                handleBatchProcess('OUT', targetStudentIds);
+                setSelectedIds([]);
+              }}
+              disabled={isProcessing}
+              style={{ padding: '12px 24px', backgroundColor: '#3B82F6', color: '#FFFFFF', borderRadius: '16px', border: 'none', fontWeight: 800, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.2)', transition: 'all' }}
+            >
+              {isProcessing ? '처리 중...' : `선택 관원 하원 처리 (${selectedIds.length})`}
+            </button>
+          )}
+
           <button 
             onClick={viewMode === 'list' ? fetchLogs : fetchMonthlyLogs}
             style={{ padding: '12px 24px', backgroundColor: '#FFFFFF', borderRadius: '16px', border: '1px solid #E2E8F0', fontWeight: 800, fontSize: '14px', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.02)' }}
@@ -448,53 +594,7 @@ export default function AttendanceManagementPage() {
                     </td>
                   </tr>
                 ) : (() => {
-                  const todayStr = new Date().toLocaleDateString('en-CA');
-                  let displayData = logs;
-
-                  if (filterMode === 'not_in') {
-                    // 오늘 등원 기록이 없는 관원 필터링
-                    const checkInIds = new Set(logs.filter(l => l.timestamp.startsWith(todayStr) && l.type === 'IN').map(l => l.student_id));
-                    displayData = students.filter(s => !checkInIds.has(s.id)).map(s => ({
-                      id: 0,
-                      student_id: s.id,
-                      timestamp: todayStr,
-                      type: 'NOT_IN',
-                      status: '결석',
-                      student_name: s.name,
-                      parent_name: s.parent_name || '',
-                      parent_phone: s.parent_phone || '',
-                      class_name: classMap[s.class_id] || ''
-                    }));
-                  } else if (filterMode === 'not_out') {
-                    // 오늘 등원은 했지만 하원 기록이 없는 관원 필터링
-                    const checkInIds = new Set(logs.filter(l => l.timestamp.startsWith(todayStr) && l.type === 'IN').map(l => l.student_id));
-                    const checkOutIds = new Set(logs.filter(l => l.timestamp.startsWith(todayStr) && l.type === 'OUT').map(l => l.student_id));
-                    displayData = students
-                      .filter(s => checkInIds.has(s.id) && !checkOutIds.has(s.id))
-                      .map(s => {
-                        const inLog = logs.find(l => l.student_id === s.id && l.timestamp.startsWith(todayStr) && l.type === 'IN');
-                        return {
-                          id: inLog?.id || 0,
-                          student_id: s.id,
-                          timestamp: inLog?.timestamp || todayStr,
-                          type: 'NOT_OUT',
-                          status: '수련 중',
-                          student_name: s.name,
-                          parent_name: s.parent_name || '',
-                          parent_phone: s.parent_phone || '',
-                          class_name: classMap[s.class_id] || ''
-                        };
-                      });
-                  }
-
-                  const filtered = displayData.filter(log => 
-                    matchChosung(log.student_name || '', searchTerm) || 
-                    matchChosung(log.parent_name || '', searchTerm) || 
-                    (log.parent_phone || '').includes(searchTerm) ||
-                    matchChosung(log.class_name || '', searchTerm)
-                  );
-
-                  if (filtered.length === 0) {
+                  if (filteredLogs.length === 0) {
                     return (
                       <tr>
                         <td colSpan={7} className="p-20 text-center">
@@ -504,21 +604,20 @@ export default function AttendanceManagementPage() {
                     );
                   }
 
-                  return filtered.map((log) => (
-                    <tr key={log.type === 'all' ? log.id : `${log.student_id}-${log.type}`} className={`group border-b border-slate-50 hover:bg-slate-50/50 transition-colors ${selectedIds.includes(log.id) ? 'bg-blue-50/30' : ''}`}>
+                  return filteredLogs.map((log: any) => (
+                    <tr key={log.type === 'all' ? log.id : `${log.student_id}-${log.type}`} className={`group border-b border-slate-50 hover:bg-slate-50/50 transition-colors ${typeof log.id === 'number' && selectedIds.includes(log.id) ? 'bg-blue-50/30' : ''}`}>
                       <td className="p-8">
                         <input 
                           type="checkbox" 
                           className="w-5 h-5 rounded border-slate-200 cursor-pointer"
                           checked={selectedIds.includes(log.id)}
                           onChange={() => handleSelectOne(log.id)}
-                          disabled={log.id === 0}
                         />
                       </td>
-                      <td className="p-8 text-slate-400 font-mono text-xs">{log.id === 0 ? '-' : log.id}</td>
+                      <td className="p-8 text-slate-400 font-mono text-xs">{typeof log.id !== 'number' || log.id === 0 ? '-' : log.id}</td>
                       <td className="p-8">
-                        <p className="font-bold text-slate-700">{log.id === 0 ? '기록 없음' : new Date(log.timestamp).toLocaleDateString('ko-KR')}</p>
-                        <p className="text-xs font-medium text-slate-400">{log.id === 0 ? '-' : new Date(log.timestamp).toLocaleTimeString('ko-KR', { hour12: false })}</p>
+                        <p className="font-bold text-slate-700">{typeof log.id !== 'number' || log.id === 0 ? '기록 없음' : new Date(log.timestamp).toLocaleDateString('ko-KR')}</p>
+                        <p className="text-xs font-medium text-slate-400">{typeof log.id !== 'number' || log.id === 0 ? '-' : new Date(log.timestamp).toLocaleTimeString('ko-KR', { hour12: false })}</p>
                       </td>
                       <td className="p-8 font-black text-slate-900 text-lg">{log.student_name}</td>
                       <td className="p-8">

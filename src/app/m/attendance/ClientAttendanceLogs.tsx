@@ -20,6 +20,7 @@ export default function ClientAttendanceLogs({ initialLogs, allStudents, error }
   const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
   const [processedIds, setProcessedIds] = React.useState<Set<number>>(new Set());
   const [isProcessing, setIsProcessing] = React.useState(false);
+  const [sendSmsOnBatch, setSendSmsOnBatch] = React.useState(true);
 
   const failedSmsCount = React.useMemo(() => {
     return initialLogs.filter(l => l.sms_status === 'FAILED').length;
@@ -64,21 +65,22 @@ export default function ClientAttendanceLogs({ initialLogs, allStudents, error }
       }
 
       // 3. [서버 처리 - 2단계: 문자 발송]
-      // 문자 발송은 백그라운드에서 진행하도록 내버려둡니다. (.then 사용)
-      const smsRequests = currentSelected.map(id => ({ studentId: id, type }));
-      sendAttendanceSMSBatchAction(smsRequests, timestamp).then(res => {
-        if (res && res.success) {
-          console.log(`${currentSelected.length}명 문자 발송 프로세스 완료`);
-        }
-        router.refresh(); // 최종 상태(성공/실패 배지) 반영을 위해 한 번 더 갱신
-      });
+      if (sendSmsOnBatch) {
+        const smsRequests = currentSelected.map(id => ({ studentId: id, type }));
+        sendAttendanceSMSBatchAction(smsRequests, timestamp).then(res => {
+          if (res && res.success) {
+            console.log(`${currentSelected.length}명 문자 발송 프로세스 완료`);
+          }
+          router.refresh(); // 최종 상태(성공/실패 배지) 반영을 위해 한 번 더 갱신
+        });
+      }
 
       // 로딩 상태 해제 (저장만 끝나면 바로 해제)
       setIsProcessing(false);
 
       // 성공 알림
       setTimeout(() => {
-        alert(`${currentSelected.length}명의 출결 기록이 완료되었습니다.\n문자는 백그라운드에서 발송 중입니다.`);
+        alert(`${currentSelected.length}명의 출결 기록이 완료되었습니다.${sendSmsOnBatch ? '\n문자는 백그라운드에서 발송 중입니다.' : ''}`);
       }, 100);
 
     } catch (err) {
@@ -152,9 +154,34 @@ export default function ClientAttendanceLogs({ initialLogs, allStudents, error }
         <div className="flex justify-between items-center mb-3">
           <h1 className="text-xl font-black text-slate-900 tracking-tight shrink-0">출결 기록</h1>
           <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center">
-            <span className="text-[11px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full shadow-sm border border-blue-100/50">
-              {formatDate(now)}
-            </span>
+            {mode === 'daily' ? (
+              <input
+                type="date"
+                value={searchParams.get('date') || (() => {
+                  const tzOffset = 9 * 60 * 60000;
+                  return new Date(Date.now() + tzOffset).toISOString().split('T')[0];
+                })()}
+                onChange={(e) => {
+                  startTransition(() => {
+                    router.push(`/m/attendance?mode=daily&date=${e.target.value}`);
+                  });
+                }}
+                className="text-[11px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full shadow-sm border border-blue-100/50 outline-none text-center"
+              />
+            ) : (
+              <input
+                type="month"
+                value={`${searchParams.get('year') || new Date().getFullYear()}-${searchParams.get('month') || String(new Date().getMonth() + 1).padStart(2, '0')}`}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  const [year, month] = e.target.value.split('-');
+                  startTransition(() => {
+                    router.push(`/m/attendance?mode=monthly&year=${year}&month=${month}`);
+                  });
+                }}
+                className="text-[11px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full shadow-sm border border-blue-100/50 outline-none text-center"
+              />
+            )}
           </div>
           <div className="flex bg-slate-100 p-1 rounded-xl relative min-w-[100px]">
             <button onClick={() => switchMode('daily')} className={`flex-1 px-2.5 py-1.5 text-[10px] font-black rounded-lg transition-all ${mode === 'daily' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>일일</button>
@@ -295,7 +322,16 @@ export default function ClientAttendanceLogs({ initialLogs, allStudents, error }
       </div>
 
       {selectedIds.length > 0 && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-xs px-5 z-20">
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-xs px-5 z-20 flex flex-col gap-2">
+          <label className="flex items-center justify-center gap-2 bg-white/90 backdrop-blur-md py-2 px-4 rounded-xl shadow-sm border border-slate-200 cursor-pointer">
+            <input 
+              type="checkbox" 
+              checked={sendSmsOnBatch} 
+              onChange={(e) => setSendSmsOnBatch(e.target.checked)} 
+              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-sm font-bold text-slate-700">문자 발송 포함</span>
+          </label>
           <button onClick={handleAttendanceProcess} disabled={isProcessing} className="w-full bg-slate-900 text-white py-4 rounded-2xl shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
             {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
             <span className="font-black text-lg">{selectedIds.length}명 {filter === 'NOT_IN' ? '등원' : '하원'}처리</span>

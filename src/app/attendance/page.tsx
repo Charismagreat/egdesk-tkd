@@ -155,9 +155,21 @@ export default function AttendanceMonitorPage() {
         console.log('Webcam stream started');
         setCameraError('');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Webcam access error:', err);
-      setCameraError('카메라 접근 권한이 없거나 카메라를 찾을 수 없습니다.');
+      let errMsg = '카메라 접근 권한이 없거나 카메라를 찾을 수 없습니다.';
+      if (err.name === 'NotAllowedError') {
+        errMsg = '카메라 접근 권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.';
+      } else if (err.name === 'NotFoundError') {
+        errMsg = 'PC에 연결된 카메라 장치를 찾을 수 없습니다. 웹캠이 제대로 연결되어 있는지 확인해주세요.';
+      } else if (err.name === 'NotReadableError') {
+        errMsg = '카메라가 이미 다른 프로그램(예: 줌, 카카오톡, 다른 브라우저 탭)에서 사용 중입니다.';
+      } else if (err.name === 'AbortError') {
+        errMsg = '카메라를 시작하는 중 시간이 초과되었습니다. 카메라가 멈췄거나, 백신 프로그램 및 하드웨어 설정(프라이버시 셔터)에 의해 차단되었을 수 있습니다.';
+      } else {
+        errMsg = `카메라 에러: ${err.name} - ${err.message}`;
+      }
+      setCameraError(errMsg);
     }
   };
 
@@ -178,9 +190,9 @@ export default function AttendanceMonitorPage() {
     const recognitionLoop = async () => {
       if (!isRunning) return;
       
-      // Stricter check: video must be ready AND have positive dimensions
+      // Stricter check: video must be ready AND have positive dimensions AND be playing
       const video = videoRef.current;
-      if (!video || video.readyState < 2 || video.videoWidth === 0) {
+      if (!video || video.readyState < 3 || video.videoWidth === 0 || video.paused) {
         requestAnimationFrame(recognitionLoop);
         return;
       }
@@ -377,6 +389,7 @@ export default function AttendanceMonitorPage() {
           ref={videoRef}
           autoPlay
           muted
+          playsInline
           className="absolute inset-0 w-full h-full object-cover opacity-50 filter contrast-125 saturate-50"
           style={{ transform: 'scaleX(-1)' }}
         />

@@ -622,13 +622,6 @@ export default function StudentManagementPage() {
                     <td className="p-8">
                       <div className="flex items-center gap-4">
                         <div className="flex flex-col gap-1 items-center">
-                          {student.status === 'ON_HOLD' ? (
-                            <span className="text-[10px] font-black bg-amber-100 text-amber-600 px-2 py-0.5 rounded-md">휴관</span>
-                          ) : student.status === 'DISCHARGED' ? (
-                            <span className="text-[10px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-md">퇴관</span>
-                          ) : (
-                            <span className="text-[10px] font-black bg-blue-100 text-blue-600 px-2 py-0.5 rounded-md">재원</span>
-                          )}
                           <div 
                             onClick={() => student.profile_image && setPreviewImage(student.profile_image)}
                             className={`w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden border border-slate-200 ${student.profile_image ? 'cursor-pointer hover:border-blue-500 hover:scale-105 active:scale-95 transition-all' : ''}`}
@@ -642,7 +635,16 @@ export default function StudentManagementPage() {
                           </div>
                         </div>
                         <div>
-                          <p className="font-black text-slate-900 text-lg">{student.name}</p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="font-black text-slate-900 text-lg leading-none">{student.name}</p>
+                            {student.status === 'ON_HOLD' ? (
+                              <span className="text-[10px] font-black bg-amber-100 text-amber-600 px-2 py-0.5 rounded-md">휴관</span>
+                            ) : student.status === 'DISCHARGED' ? (
+                              <span className="text-[10px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-md">퇴관</span>
+                            ) : (
+                              <span className="text-[10px] font-black bg-blue-100 text-blue-600 px-2 py-0.5 rounded-md">재원</span>
+                            )}
+                          </div>
                           <p className="text-[10px] font-black text-blue-500 uppercase tracking-tighter">{student.rank || '일반'}</p>
                         </div>
                         <div className="flex flex-col gap-1.5 ml-3 border-l border-slate-100 pl-3">
